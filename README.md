@@ -52,6 +52,7 @@ ink --no-detach /path/to/file.md
 - Syntax highlighting for common languages
 - Automatic light/dark mode
 - Cmd+R to reload
+- Auto-reload when the file changes on disk
 - Cmd+Q / Cmd+W to quit/close
 - Click links to open in your default browser
 - Click a code block or its Copy button to copy

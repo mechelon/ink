@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 @preconcurrency import WebKit
 import Down
 
@@ -40,7 +41,7 @@ private func loadBundledIcon() -> NSImage? {
     for ext in extensions {
         if let url = Bundle.module.url(forResource: "AppIcon", withExtension: ext),
            let image = NSImage(contentsOf: url) {
-            return insetIconImage(image, scale: 0.92)
+            return insetIconImage(image, scale: 0.94)
         }
     }
     return nil
@@ -668,6 +669,9 @@ final class InkApp: NSObject, NSApplicationDelegate, WKNavigationDelegate {
     private let fileURL: URL
     private var window: NSWindow?
     private var webView: WKWebView?
+    private var fileDescriptor: CInt = -1
+    private var fileWatcher: DispatchSourceFileSystemObject?
+    private var reloadWorkItem: DispatchWorkItem?
 
     init(fileURL: URL) {
         self.fileURL = fileURL
@@ -699,11 +703,16 @@ final class InkApp: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         self.webView = webView
 
         reload(nil)
+        startFileWatcher()
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        stopFileWatcher()
     }
 
     @objc func reload(_ sender: Any?) {
@@ -717,6 +726,61 @@ final class InkApp: NSObject, NSApplicationDelegate, WKNavigationDelegate {
             let html = makeErrorHTML(message: error.localizedDescription)
             webView.loadHTMLString(html, baseURL: nil)
         }
+    }
+
+    private func scheduleReload() {
+        reloadWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.reload(nil)
+        }
+        reloadWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: workItem)
+    }
+
+    private func startFileWatcher() {
+        stopFileWatcher()
+        fileDescriptor = open(fileURL.path, O_EVTONLY)
+        guard fileDescriptor >= 0 else { return }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .rename, .delete],
+            queue: DispatchQueue.main
+        )
+        source.setEventHandler { [weak self] in
+            self?.handleFileEvent()
+        }
+        source.setCancelHandler { [weak self] in
+            guard let self else { return }
+            if self.fileDescriptor >= 0 {
+                close(self.fileDescriptor)
+                self.fileDescriptor = -1
+            }
+        }
+
+        fileWatcher = source
+        source.resume()
+    }
+
+    private func stopFileWatcher() {
+        reloadWorkItem?.cancel()
+        reloadWorkItem = nil
+        if let watcher = fileWatcher {
+            watcher.cancel()
+            fileWatcher = nil
+        } else if fileDescriptor >= 0 {
+            close(fileDescriptor)
+            fileDescriptor = -1
+        }
+    }
+
+    private func handleFileEvent() {
+        guard let watcher = fileWatcher else { return }
+        let flags = watcher.data
+        if flags.contains(.rename) || flags.contains(.delete) {
+            startFileWatcher()
+        }
+        scheduleReload()
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
