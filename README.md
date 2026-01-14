@@ -2,6 +2,9 @@
 
 `ink` is a minimal, fast macOS Markdown viewer built in Swift. It opens a native window that renders Markdown with clean typography, syntax highlighting, and link handling.
 
+<img width="2140" height="1552" alt="CleanShot 2026-01-14 at 11 00 10@2x" src="https://github.com/user-attachments/assets/0f363f4f-1097-4021-81f7-ab995e040934" />
+
+
 ## Requirements
 
 - macOS 13+
@@ -42,28 +45,6 @@ By default, `ink` exits immediately after launching the window. To keep the CLI 
 ```bash
 ink --no-detach /path/to/file.md
 ```
-
-## Custom Dock icon
-
-To bake an icon into the binary, add a PNG or ICNS at:
-
-`Sources/ink/Resources/AppIcon.png` (or `.icns`)
-
-Then rebuild. The app will use it by default.
-
-You can also override the Dock icon at runtime:
-
-```bash
-ink --icon /path/to/AppIcon.png README.md
-```
-
-Or set it via environment variable:
-
-```bash
-INK_ICON=/path/to/AppIcon.icns ink README.md
-```
-
-If no icon is provided, ink uses a built-in default.
 
 ## Features
 
