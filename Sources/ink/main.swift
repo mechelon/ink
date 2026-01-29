@@ -222,6 +222,120 @@ private func htmlEscaped(_ string: String) -> String {
         .replacingOccurrences(of: "'", with: "&#39;")
 }
 
+private enum ColumnAlignment {
+    case left, center, right
+}
+
+private func parseTableRow(_ line: String) -> [String]? {
+    let trimmed = line.trimmingCharacters(in: .whitespaces)
+    guard trimmed.hasPrefix("|") else { return nil }
+
+    var cells: [String] = []
+    var current = ""
+    var inCell = false
+
+    for char in trimmed {
+        if char == "|" {
+            if inCell {
+                cells.append(current.trimmingCharacters(in: .whitespaces))
+                current = ""
+            }
+            inCell = true
+        } else {
+            current.append(char)
+        }
+    }
+
+    return cells.isEmpty ? nil : cells
+}
+
+private func parseSeparatorRow(_ line: String) -> [ColumnAlignment]? {
+    guard let cells = parseTableRow(line) else { return nil }
+    var alignments: [ColumnAlignment] = []
+
+    for cell in cells {
+        let trimmed = cell.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("-") else { return nil }
+
+        let hasLeftColon = trimmed.hasPrefix(":")
+        let hasRightColon = trimmed.hasSuffix(":")
+
+        if hasLeftColon && hasRightColon {
+            alignments.append(.center)
+        } else if hasRightColon {
+            alignments.append(.right)
+        } else {
+            alignments.append(.left)
+        }
+    }
+
+    return alignments.isEmpty ? nil : alignments
+}
+
+private func tableRowToHTML(_ cells: [String], alignments: [ColumnAlignment], isHeader: Bool) -> String {
+    let tag = isHeader ? "th" : "td"
+    var html = "<tr>"
+
+    for (index, cell) in cells.enumerated() {
+        let alignment = index < alignments.count ? alignments[index] : .left
+        let style: String
+        switch alignment {
+        case .left:
+            style = ""
+        case .center:
+            style = " style=\"text-align: center;\""
+        case .right:
+            style = " style=\"text-align: right;\""
+        }
+        html += "<\(tag)\(style)>\(htmlEscaped(cell))</\(tag)>"
+    }
+
+    html += "</tr>"
+    return html
+}
+
+private func preprocessMarkdownTables(_ markdown: String) -> String {
+    let lines = markdown.components(separatedBy: "\n")
+    var result: [String] = []
+    var i = 0
+
+    while i < lines.count {
+        let line = lines[i]
+
+        // Check if this could be a table header row
+        if let headerCells = parseTableRow(line), i + 1 < lines.count {
+            let nextLine = lines[i + 1]
+            if let alignments = parseSeparatorRow(nextLine) {
+                // Found a table
+                var tableHTML = "<table>\n<thead>\n"
+                tableHTML += tableRowToHTML(headerCells, alignments: alignments, isHeader: true)
+                tableHTML += "\n</thead>\n<tbody>\n"
+
+                i += 2
+
+                while i < lines.count {
+                    if let rowCells = parseTableRow(lines[i]) {
+                        tableHTML += tableRowToHTML(rowCells, alignments: alignments, isHeader: false)
+                        tableHTML += "\n"
+                        i += 1
+                    } else {
+                        break
+                    }
+                }
+
+                tableHTML += "</tbody>\n</table>"
+                result.append(tableHTML)
+                continue
+            }
+        }
+
+        result.append(line)
+        i += 1
+    }
+
+    return result.joined(separator: "\n")
+}
+
 private let baseCSS = #"""
 :root {
   color-scheme: light dark;
@@ -719,7 +833,8 @@ final class InkApp: NSObject, NSApplicationDelegate, WKNavigationDelegate {
         guard let webView else { return }
         do {
             let markdown = try String(contentsOf: fileURL, encoding: .utf8)
-            let htmlBody = try Down(markdownString: markdown).toHTML(.smart)
+            let processedMarkdown = preprocessMarkdownTables(markdown)
+            let htmlBody = try Down(markdownString: processedMarkdown).toHTML([.smart, .unsafe])
             let html = makeHTML(bodyHTML: htmlBody, title: fileURL.lastPathComponent)
             webView.loadHTMLString(html, baseURL: fileURL.deletingLastPathComponent())
         } catch {
