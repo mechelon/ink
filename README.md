@@ -40,6 +40,12 @@ sudo ./install.sh
 ink /path/to/file.md
 ```
 
+Or point at a folder of Markdown files to get a sidebar:
+
+```bash
+ink /path/to/folder
+```
+
 By default, `ink` exits immediately after launching the window. To keep the CLI attached, run:
 
 ```bash
@@ -53,6 +59,7 @@ ink --no-detach /path/to/file.md
 - Automatic light/dark mode
 - Cmd+R to reload
 - Auto-reload when the file changes on disk
+- Folder view with a file sidebar
 - Cmd+Q / Cmd+W to quit/close
 - Click links to open in your default browser
 - Click a code block or its Copy button to copy
